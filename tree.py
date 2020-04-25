@@ -5,21 +5,24 @@ import json
 
 '''Python 3 remiplementation of the linux 'tree' utility'''
 
+## pseudo-graphics chars
 chars = {
-    'nw': '\u2514',
-    'nws': '\u251c',
-    'ew': '\u2500',
-    'ns': '\u2502'
+    'nw': '\u2514',     # └
+    'nws': '\u251c',    # ├
+    'ew': '\u2500',     # ─
+    'ns': '\u2502'      # │
 }
 
+tabsize = 4 # must be >= 1 # ...
 strs = [
-    chars['ns'] + '   ',
+    chars['ns'] + ' '*(tabsize-1),
     chars['nws'] + chars['ew']*2 + ' ',
     chars['nw'] + chars['ew']*2 + ' ',
-    '    '
+    ' '*tabsize
 ]
 
 class colors:
+
     blue = '\033[01;34m'
     green = '\033[01;32m'
     cyan = '\033[01;36m'
@@ -40,61 +43,74 @@ class colors:
         'executable': green,
     }
 
+# dont used
 def colorwrap(string, color):
     return color+string+colors.default
 
 def colorwrap_by_type(string, filetype):
-    return colorwrap(string, colors.by_type[filetype])
+    return colors.by_type[filetype]+string+colors.default
+    #same as:
+    #return colorwrap(string, colors.by_type[filetype])
 
+#dont used
 def colorize(path, full = False):
     file = path if full else os.path.basename(path)
 
     if os.path.islink(path):
-        return colors.link + file + colors.end + ' -> ' + colorize(os.readlink(path), True)
+        return colorwrap_by_type(file, 'link') + ' -> ' + colorize(os.readlink(path), True)
 
     if os.path.isdir(path):
-        return colors.dir + file + colors.end
+        return colorwrap_by_type(file, 'directory')
 
-    if os.access(path, os.X_OK):
-        return colors.exec + file + colors.end
+    if os.access(path, os.X_OK): # is executable
+        return colorwrap_by_type(file, 'executable')
 
     return file
 
-def build_tree(dir, opts):
+
+def build_json_tree(dir, opts):
     tree = []
     dirs = 0
     files = 0
 
     for filename in sorted(os.listdir(dir), key = str.lower):
+
         if filename[0] == '.' and not opts['show_hidden']:
             continue
+
         path = os.path.join(dir, filename)
         node = {'name': filename}
+
         if opts['show_size']: 
             node['size'] = os.path.getsize(path)
+
         if os.path.islink(path):
             node['type'] = 'link'
             node['target'] = os.readlink(path)
             node['contents'] = []
             if os.path.isdir(path):
                 if opts['follow_symlinks']:
-                    node['contents'], d, f = build_tree(path, opts)
+                    node['contents'], d, f = build_json_tree(path, opts)
                     dirs += d + 1
                     files += f
                 else:
                     dirs += 1
             else:
                 files += 1
+        
         elif False: # is deadlink (?)
             node['type'] = 'deadlink'
+
         elif os.path.isdir(path):
             node['type'] = 'directory'
-            node['contents'], d, f = build_tree(path, opts)
+            node['contents'], d, f = build_json_tree(path, opts)
             dirs += d + 1
             files += f
+
         elif os.access(path, os.X_OK): # is executable
             node['type'] = 'executable'
             files += 1
+
         else: # if regular file
             node['type'] = 'file'
             files += 1
@@ -103,6 +119,7 @@ def build_tree(dir, opts):
 
     return tree, dirs, files
 
+    
 def print_tree(tree, level=0, opts = {}):
     dir_len = len(tree) - 1
     for i, file_node in enumerate(tree):
@@ -114,6 +131,7 @@ def print_tree(tree, level=0, opts = {}):
     if file_node['type'] == 'directory' :
         print_tree(file_node['contents'], level+1)
 
+#dont used
 def print_dir(dir, pre = '', opts = {}):
     dirs = 0
     files = 0
@@ -141,10 +159,12 @@ def print_dir(dir, pre = '', opts = {}):
 
     return (dirs, files, size)
 
+
 def print_report(report):
     dirs = report['directories']
     files = report['files']
     print('{} director{}, {} file{}'.format(dirs, 'ies' if dirs != 1 else 'y', files, 's' if files != 1 else ''))
+
 
 if __name__ == '__main__':
     dirs = 0
@@ -156,7 +176,8 @@ if __name__ == '__main__':
         'follow_symlinks': False
     }
 
-    tree, dirs, files = build_tree('.', opts)
+    tree, dirs, files = build_json_tree('.', opts)
+
     init_tree_point = [{
         'name': '.'
         ,'type': 'directory'
