@@ -20,11 +20,31 @@ strs = [
 ]
 
 class colors:
-    dir = '\033[01;34m'
-    exec = '\033[01;32m'
-    link = '\033[01;36m'
-    deadlink = '\033[40;31;01m'
-    end = '\033[00m'
+    blue = '\033[01;34m'
+    green = '\033[01;32m'
+    cyan = '\033[01;36m'
+    red = '\033[40;31;01m'
+    default = '\033[00m'
+
+    #dir =  blue
+    #exec = green
+    #link = cyan
+    #deadlink = red
+    #end = default
+
+    by_type = {
+        'link': cyan,
+        'deadlink': red,
+        'directory': blue,
+        'file': default, # or do nothing
+        'executable': green,
+    }
+
+def colorwrap(string, color):
+    return color+string+colors.default
+
+def colorwrap_by_type(string, filetype):
+    return colorwrap(string, colors.by_type[filetype])
 
 def colorize(path, full = False):
     file = path if full else os.path.basename(path)
@@ -46,10 +66,12 @@ def build_tree(dir, opts):
     files = 0
 
     for filename in sorted(os.listdir(dir), key = str.lower):
-        if filename[0] == '.' and not opts['show_hidden']: continue
+        if filename[0] == '.' and not opts['show_hidden']:
+            continue
         path = os.path.join(dir, filename)
         node = {'name': filename}
-        if opts['show_size']: node['size'] = os.path.getsize(path)
+        if opts['show_size']: 
+            node['size'] = os.path.getsize(path)
         if os.path.islink(path):
             node['type'] = 'link'
             node['target'] = os.readlink(path)
@@ -63,19 +85,34 @@ def build_tree(dir, opts):
                     dirs += 1
             else:
                 files += 1
+        elif False: # is deadlink (?)
+            node['type'] = 'deadlink'
         elif os.path.isdir(path):
             node['type'] = 'directory'
             node['contents'], d, f = build_tree(path, opts)
             dirs += d + 1
             files += f
-        else:
+        elif os.access(path, os.X_OK): # is executable
+            node['type'] = 'executable'
+            files += 1
+        else: # if regular file
             node['type'] = 'file'
             files += 1
+
         tree.append(node)
+
     return tree, dirs, files
 
-def print_tree(tree, opts):
-    pass
+def print_tree(tree, level=0, opts = {}):
+    dir_len = len(tree) - 1
+    for i, file_node in enumerate(tree):
+        pre = ""
+        if level!=0:  # we assume that zero level is always this dir (".")
+            pre = strs[3]*(level-1) + strs[2 if (i == dir_len) else 1]   # *(level-1) - dirty hack
+        print( pre + colorwrap_by_type(file_node['name'], file_node['type']) )
+
+    if file_node['type'] == 'directory' :
+        print_tree(file_node['contents'], level+1)
 
 def print_dir(dir, pre = '', opts = {}):
     dirs = 0
@@ -104,6 +141,11 @@ def print_dir(dir, pre = '', opts = {}):
 
     return (dirs, files, size)
 
+def print_report(report):
+    dirs = report['directories']
+    files = report['files']
+    print('{} director{}, {} file{}'.format(dirs, 'ies' if dirs != 1 else 'y', files, 's' if files != 1 else ''))
+
 if __name__ == '__main__':
     dirs = 0
     files = 0
@@ -115,16 +157,19 @@ if __name__ == '__main__':
     }
 
     tree, dirs, files = build_tree('.', opts)
-    jdata = [
-        {
-            'name': '.',
-            'type': 'directory',
-            'contents': tree
-        },
-        {
-            'type': 'report',
-            'directories': dirs,
-            'files': files
-        }
-    ]
-    print(json.dumps(jdata, sort_keys = True))
+    init_tree_point = [{
+        'name': '.'
+        ,'type': 'directory'
+        ,'contents': tree
+    }]
+
+    #print(json.dumps(init_tree_point, sort_keys = True))
+    print_tree(init_tree_point)
+
+    jreport = {
+        'type': 'report',
+        'directories': dirs,
+        'files': files
+    }
+    print()
+    print_report(jreport)
